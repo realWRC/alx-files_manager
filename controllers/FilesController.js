@@ -184,7 +184,7 @@ class FilesController {
     }
 
     const pageNumber = parseInt(page, 10);
-    if (Number.isNaN(pageNumber) || pageNumber < 0) {
+    if (isNaN(pageNumber) || pageNumber < 0) {
       return res.status(400).json({ error: 'Invalid page number' });
     }
 
@@ -242,6 +242,124 @@ class FilesController {
       return res.status(200).json(responseFiles);
     } catch (error) {
       console.error('Error in getIndex:', error);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  static async putPublish(req, res) {
+    const { id } = req.params;
+    const token = req.headers['x-token'];
+
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const redisKey = `auth_${token}`;
+      const userId = await redisClient.get(redisKey);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const user = await dbClient.db.collection('users').findOne({ _id: dbClient.ObjectID(userId) });
+
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      let fileObjectId;
+      try {
+        fileObjectId = dbClient.ObjectID(id);
+      } catch (err) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const updatedFile = await dbClient.db.collection('files').findOneAndUpdate(
+        { _id: fileObjectId, userId: dbClient.ObjectID(userId) },
+        { $set: { isPublic: true } },
+        { returnDocument: 'after' }
+      );
+
+      if (!updatedFile.value) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const responseFile = {
+        id: updatedFile.value._id.toString(),
+        userId: updatedFile.value.userId.toString(),
+        name: updatedFile.value.name,
+        type: updatedFile.value.type,
+        isPublic: updatedFile.value.isPublic,
+        parentId: updatedFile.value.parentId === '0' ? '0' : updatedFile.value.parentId.toString(),
+      };
+
+      if (updatedFile.value.type === 'file' || updatedFile.value.type === 'image') {
+        responseFile.localPath = updatedFile.value.localPath;
+      }
+
+      return res.status(200).json(responseFile);
+    } catch (error) {
+      console.error('Error in putPublish:', error);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  static async putUnpublish(req, res) {
+    const { id } = req.params;
+    const token = req.headers['x-token'];
+
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const redisKey = `auth_${token}`;
+      const userId = await redisClient.get(redisKey);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const user = await dbClient.db.collection('users').findOne({ _id: dbClient.ObjectID(userId) });
+
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      let fileObjectId;
+      try {
+        fileObjectId = dbClient.ObjectID(id);
+      } catch (err) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const updatedFile = await dbClient.db.collection('files').findOneAndUpdate(
+        { _id: fileObjectId, userId: dbClient.ObjectID(userId) },
+        { $set: { isPublic: false } },
+        { returnDocument: 'after' }
+      );
+
+      if (!updatedFile.value) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const responseFile = {
+        id: updatedFile.value._id.toString(),
+        userId: updatedFile.value.userId.toString(),
+        name: updatedFile.value.name,
+        type: updatedFile.value.type,
+        isPublic: updatedFile.value.isPublic,
+        parentId: updatedFile.value.parentId === '0' ? '0' : updatedFile.value.parentId.toString(),
+      };
+
+      if (updatedFile.value.type === 'file' || updatedFile.value.type === 'image') {
+        responseFile.localPath = updatedFile.value.localPath;
+      }
+
+      return res.status(200).json(responseFile);
+    } catch (error) {
+      console.error('Error in putUnpublish:', error);
       return res.status(500).json({ error: 'Internal Server Error' });
     }
   }
