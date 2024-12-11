@@ -36,7 +36,10 @@ class FilesController {
 
       const validTypes = ['folder', 'file', 'image'];
       if (!type || !validTypes.includes(type)) {
-        return res.status(400).json({ error: 'Missing type' });
+        if (!type) {
+          return res.status(400).json({ error: 'Missing type' });
+        }
+        return res.status(400).json({ error: 'Invalid type' });
       }
 
       if (type !== 'folder' && !data) {
@@ -69,7 +72,6 @@ class FilesController {
       let localPath = null;
 
       if (type === 'file' || type === 'image') {
-        // Retrieve FOLDER_PATH from environment variables or use default
         const folderPath = process.env.FOLDER_PATH || '/tmp/files_manager';
         await mkdirp.sync(folderPath);
 
@@ -101,7 +103,7 @@ class FilesController {
         name,
         type,
         isPublic: Boolean(isPublic),
-        parentId: parentId === '0' ? '0' : parentId,
+        parentId: parentId === '0' ? '0' : parentId.toString(),
       };
 
       if (type === 'file' || type === 'image') {
@@ -111,6 +113,135 @@ class FilesController {
       return res.status(201).json(responseFile);
     } catch (error) {
       console.error('Error in postUpload:', error);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  static async getShow(req, res) {
+    const { id } = req.params;
+    const token = req.headers['x-token'];
+
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const redisKey = `auth_${token}`;
+      const userId = await redisClient.get(redisKey);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const user = await dbClient.db.collection('users').findOne({ _id: dbClient.ObjectID(userId) });
+
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      let fileObjectId;
+      try {
+        fileObjectId = dbClient.ObjectID(id);
+      } catch (err) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const file = await dbClient.db.collection('files').findOne({
+        _id: fileObjectId,
+        userId: dbClient.ObjectID(userId),
+      });
+
+      if (!file) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const responseFile = {
+        id: file._id.toString(),
+        userId: file.userId.toString(),
+        name: file.name,
+        type: file.type,
+        isPublic: file.isPublic,
+        parentId: file.parentId === '0' ? '0' : file.parentId.toString(),
+      };
+
+      if (file.type === 'file' || file.type === 'image') {
+        responseFile.localPath = file.localPath;
+      }
+
+      return res.status(200).json(responseFile);
+    } catch (error) {
+      console.error('Error in getShow:', error);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  static async getIndex(req, res) {
+    const token = req.headers['x-token'];
+    const { parentId = '0', page = '0' } = req.query;
+
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const pageNumber = parseInt(page, 10);
+    if (Number.isNaN(pageNumber) || pageNumber < 0) {
+      return res.status(400).json({ error: 'Invalid page number' });
+    }
+
+    try {
+      const redisKey = `auth_${token}`;
+      const userId = await redisClient.get(redisKey);
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const user = await dbClient.db.collection('users').findOne({ _id: dbClient.ObjectID(userId) });
+
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      let parentCondition;
+      if (parentId === '0') {
+        parentCondition = '0';
+      } else {
+        try {
+          parentCondition = dbClient.ObjectID(parentId);
+        } catch (err) {
+          return res.status(200).json([]);
+        }
+      }
+
+      const limit = 20;
+      const skip = pageNumber * limit;
+
+      const query = {
+        userId: dbClient.ObjectID(userId),
+        parentId: parentCondition,
+      };
+
+      const filesCursor = dbClient.db.collection('files').find(query).skip(skip).limit(limit);
+      const files = await filesCursor.toArray();
+
+      const responseFiles = files.map((file) => {
+        const mappedFile = {
+          id: file._id.toString(),
+          userId: file.userId.toString(),
+          name: file.name,
+          type: file.type,
+          isPublic: file.isPublic,
+          parentId: file.parentId === '0' ? '0' : file.parentId.toString(),
+        };
+        if (file.type === 'file' || file.type === 'image') {
+          mappedFile.localPath = file.localPath;
+        }
+        return mappedFile;
+      });
+
+      return res.status(200).json(responseFiles);
+    } catch (error) {
+      console.error('Error in getIndex:', error);
       return res.status(500).json({ error: 'Internal Server Error' });
     }
   }
