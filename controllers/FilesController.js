@@ -1,5 +1,6 @@
 const uuid = require('uuid');
 const mkdirp = require('mkdirp');
+const mime = require('mime-types');
 const path = require('path');
 const fs = require('fs').promises;
 const dbClient = require('../utils/db');
@@ -360,6 +361,68 @@ class FilesController {
       return res.status(200).json(responseFile);
     } catch (error) {
       console.error('Error in putUnpublish:', error);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  static async getFile(req, res) {
+    const { id } = req.params;
+    const token = req.headers['x-token'];
+
+    try {
+      let fileObjectId;
+      try {
+        fileObjectId = dbClient.ObjectID(id);
+      } catch (err) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const file = await dbClient.db.collection('files').findOne({ _id: fileObjectId });
+
+      if (!file) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      if (file.type === 'folder') {
+        return res.status(400).json({ error: "A folder doesn't have content" });
+      }
+
+      let isAuthorized = false;
+
+      if (file.isPublic) {
+        isAuthorized = true;
+      } else if (token) {
+        const redisKey = `auth_${token}`;
+        const userId = await redisClient.get(redisKey);
+
+        if (userId && userId === file.userId.toString()) {
+          isAuthorized = true;
+        }
+      }
+
+      if (!isAuthorized) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      if (!file.localPath) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      try {
+        await fs.access(file.localPath);
+      } catch (err) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const mimeType = mime.lookup(file.name) || 'application/octet-stream';
+
+      const fileContent = await fs.readFile(file.localPath);
+
+      res.set('Content-Type', mimeType);
+
+      return res.send(fileContent);
+    } catch (error) {
+      console.error('Error in getFile:', error);
       return res.status(500).json({ error: 'Internal Server Error' });
     }
   }
