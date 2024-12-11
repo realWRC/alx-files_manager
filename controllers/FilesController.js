@@ -69,7 +69,8 @@ class FilesController {
       let localPath = null;
 
       if (type === 'file' || type === 'image') {
-        const folderPath = '/tmp/files_manager';
+        // Retrieve FOLDER_PATH from environment variables or use default
+        const folderPath = process.env.FOLDER_PATH || '/tmp/files_manager';
         await mkdirp.sync(folderPath);
 
         const fileUUID = uuid.v4();
