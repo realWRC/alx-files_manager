@@ -1,5 +1,5 @@
-const redisClient = require('../utils/redis.js');
-const dbClient = require('../utils/db.js');
+const redisClient = require('../utils/redis');
+const dbClient = require('../utils/db');
 
 class AppController {
   static async getStatus(req, res) {
