@@ -184,7 +184,7 @@ class FilesController {
     }
 
     const pageNumber = parseInt(page, 10);
-    if (isNaN(pageNumber) || pageNumber < 0) {
+    if (Number.isNaN(pageNumber) || pageNumber < 0) {
       return res.status(400).json({ error: 'Invalid page number' });
     }
 
@@ -278,7 +278,7 @@ class FilesController {
       const updatedFile = await dbClient.db.collection('files').findOneAndUpdate(
         { _id: fileObjectId, userId: dbClient.ObjectID(userId) },
         { $set: { isPublic: true } },
-        { returnDocument: 'after' }
+        { returnDocument: 'after' },
       );
 
       if (!updatedFile.value) {
@@ -337,7 +337,7 @@ class FilesController {
       const updatedFile = await dbClient.db.collection('files').findOneAndUpdate(
         { _id: fileObjectId, userId: dbClient.ObjectID(userId) },
         { $set: { isPublic: false } },
-        { returnDocument: 'after' }
+        { returnDocument: 'after' },
       );
 
       if (!updatedFile.value) {
